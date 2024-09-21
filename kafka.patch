@@ -1,0 +1,181 @@
+Index: docker-compose.yml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/docker-compose.yml b/docker-compose.yml
+new file mode 100644
+--- /dev/null	(date 1645911225805)
++++ b/docker-compose.yml	(date 1645911225805)
+@@ -0,0 +1,23 @@
++version: '2'
++services:
++  zookeeper:
++    image: confluentinc/cp-zookeeper:latest
++    environment:
++      ZOOKEEPER_CLIENT_PORT: 2181
++      ZOOKEEPER_TICK_TIME: 2000
++    ports:
++      - 2181:2181
++
++  kafka:
++    image: confluentinc/cp-kafka:latest
++    depends_on:
++      - zookeeper
++    ports:
++      - 9092:9092
++    environment:
++      KAFKA_BROKER_ID: 1
++      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
++      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
++      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
++      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
++      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+Index: src/main/java/com/handson/sentiment/kafka/KafkaTopicConfig.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/main/java/com/handson/sentiment/kafka/KafkaTopicConfig.java b/src/main/java/com/handson/sentiment/kafka/KafkaTopicConfig.java
+new file mode 100644
+--- /dev/null	(date 1645136593248)
++++ b/src/main/java/com/handson/sentiment/kafka/KafkaTopicConfig.java	(date 1645136593248)
+@@ -0,0 +1,31 @@
++package com.handson.sentiment.kafka;
++
++import org.apache.kafka.clients.admin.AdminClientConfig;
++import org.apache.kafka.clients.admin.NewTopic;
++import org.springframework.beans.factory.annotation.Value;
++import org.springframework.context.annotation.Bean;
++import org.springframework.context.annotation.Configuration;
++import org.springframework.kafka.core.KafkaAdmin;
++
++import java.util.HashMap;
++import java.util.Map;
++
++@Configuration
++public class KafkaTopicConfig {
++    public static final String APP_TOPIC = "twitter";
++
++    @Value(value = "${spring.kafka.bootstrap-servers}")
++    private String bootstrapAddress;
++
++    @Bean
++    public KafkaAdmin kafkaAdmin() {
++        Map<String, Object> configs = new HashMap<>();
++        configs.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapAddress);
++        return new KafkaAdmin(configs);
++    }
++
++    @Bean
++    public NewTopic topic1() {
++        return new NewTopic(APP_TOPIC, 1, (short) 1);
++    }
++}
+Index: src/main/java/com/handson/sentiment/kafka/KafkaConfig.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/main/java/com/handson/sentiment/kafka/KafkaConfig.java b/src/main/java/com/handson/sentiment/kafka/KafkaConfig.java
+new file mode 100644
+--- /dev/null	(date 1645137334440)
++++ b/src/main/java/com/handson/sentiment/kafka/KafkaConfig.java	(date 1645137334440)
+@@ -0,0 +1,56 @@
++package com.handson.sentiment.kafka;
++
++import org.apache.kafka.clients.consumer.ConsumerConfig;
++import org.apache.kafka.clients.producer.ProducerConfig;
++import org.apache.kafka.common.serialization.StringDeserializer;
++import org.apache.kafka.common.serialization.StringSerializer;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
++import org.springframework.context.annotation.Bean;
++import org.springframework.context.annotation.Configuration;
++import org.springframework.stereotype.Component;
++import reactor.kafka.receiver.KafkaReceiver;
++import reactor.kafka.receiver.ReceiverOptions;
++import reactor.kafka.receiver.internals.ConsumerFactory;
++import reactor.kafka.receiver.internals.DefaultKafkaReceiver;
++import reactor.kafka.sender.KafkaSender;
++import reactor.kafka.sender.SenderOptions;
++
++import java.util.Collections;
++import java.util.HashMap;
++import java.util.Map;
++
++import static com.handson.sentiment.kafka.KafkaTopicConfig.APP_TOPIC;
++
++@Configuration
++@Component
++public class KafkaConfig {
++
++    @Autowired
++    private KafkaProperties kafkaProperties;
++
++    @Bean("simpleProducer")
++    public KafkaSender<String,String> simpleProducer(){
++        Map<String,Object> configs = new HashMap<>();
++        configs.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaProperties.getBootstrapServers());
++        configs.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
++        configs.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
++        SenderOptions<String,String> senderOptions =  SenderOptions.<String,String>create(configs).maxInFlight(1024);
++        return KafkaSender.create(senderOptions);
++    }
++
++    @Bean
++    public KafkaReceiver kafkaReceiver(){
++
++        Map<String, Object> props = new HashMap<>();
++        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG,  kafkaProperties.getBootstrapServers());
++        props.put(ConsumerConfig.GROUP_ID_CONFIG, "sentiment_group");
++        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
++        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
++        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
++        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, true);
++
++        return new DefaultKafkaReceiver(ConsumerFactory.INSTANCE, ReceiverOptions.create(props).subscription(Collections.singleton(APP_TOPIC)));
++    }
++
++}
+Index: src/main/java/com/handson/sentiment/kafka/AppKafkaSender.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/main/java/com/handson/sentiment/kafka/AppKafkaSender.java b/src/main/java/com/handson/sentiment/kafka/AppKafkaSender.java
+new file mode 100644
+--- /dev/null	(date 1645137334477)
++++ b/src/main/java/com/handson/sentiment/kafka/AppKafkaSender.java	(date 1645137334477)
+@@ -0,0 +1,31 @@
++package com.handson.sentiment.kafka;
++
++import org.apache.kafka.clients.producer.ProducerRecord;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.beans.factory.annotation.Qualifier;
++import org.springframework.stereotype.Component;
++import reactor.core.publisher.Flux;
++import reactor.core.publisher.Mono;
++import reactor.kafka.sender.KafkaSender;
++import reactor.kafka.sender.SenderRecord;
++import reactor.kafka.sender.SenderResult;
++
++import java.util.UUID;
++
++@Component
++public class AppKafkaSender {
++
++    @Autowired
++    @Qualifier("simpleProducer")
++    private KafkaSender<String, String> kafkaSender;
++
++    public boolean send(String msg, String topic) {
++        ProducerRecord<String, String> record = new ProducerRecord<String, String>(topic, null, UUID.randomUUID().toString(),
++                msg);
++        Mono<SenderRecord<String, String, String>> mono = Mono.just(SenderRecord.create(record, null));
++        Flux<SenderResult<String>> res =  kafkaSender.send(mono);
++        res.collectList().subscribe();
++
++        return  true;
++    }
++}

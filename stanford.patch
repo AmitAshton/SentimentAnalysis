@@ -1,0 +1,85 @@
+Index: src/main/java/com/handson/sentiment/nlp/SentimentAnalyzer.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/main/java/com/handson/sentiment/nlp/SentimentAnalyzer.java b/src/main/java/com/handson/sentiment/nlp/SentimentAnalyzer.java
+new file mode 100644
+--- /dev/null	(date 1644440678059)
++++ b/src/main/java/com/handson/sentiment/nlp/SentimentAnalyzer.java	(date 1644440678059)
+@@ -0,0 +1,44 @@
++package com.handson.sentiment.nlp;
++
++import edu.stanford.nlp.ling.CoreAnnotations;
++import edu.stanford.nlp.pipeline.Annotation;
++import edu.stanford.nlp.pipeline.StanfordCoreNLP;
++import edu.stanford.nlp.sentiment.SentimentCoreAnnotations;
++import edu.stanford.nlp.sentiment.SentimentCoreAnnotations.SentimentClass;
++import edu.stanford.nlp.util.CoreMap;
++import org.springframework.stereotype.Service;
++
++import javax.annotation.PostConstruct;
++import java.util.HashMap;
++import java.util.List;
++import java.util.Map;
++import java.util.Properties;
++
++@Service
++public class SentimentAnalyzer {
++    StanfordCoreNLP nlp;
++    Map<String, Double> sentimentValues = new HashMap<>();
++
++    @PostConstruct
++    public void init() {
++        Properties nlpProps = new Properties();
++        nlpProps.put("annotators", "tokenize, ssplit, parse, sentiment");
++        nlp = new StanfordCoreNLP(nlpProps);
++        sentimentValues.put("Very negative", 1d);
++        sentimentValues.put("Negative", 2d);
++        sentimentValues.put("Neutral",3d);
++        sentimentValues.put("Positive",4d);
++        sentimentValues.put("Very positive",5d);
++
++    }
++
++    public Double analyze(String text) {
++        Annotation annotation = nlp.process(text);
++        List<CoreMap> sentences =  annotation.get(CoreAnnotations.SentencesAnnotation.class);
++        return   sentences.stream()
++                .map(sentence->sentence.get(SentimentClass.class))
++                .map(sentimentStr->sentimentValues.get(sentimentStr))
++                .mapToDouble(x->x).sum()
++                / (Double.parseDouble(String.valueOf(sentences.size())));
++    }
++}
+Index: src/main/java/com/handson/sentiment/controller/AppController.java
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/main/java/com/handson/sentiment/controller/AppController.java b/src/main/java/com/handson/sentiment/controller/AppController.java
+new file mode 100644
+--- /dev/null	(date 1644441293605)
++++ b/src/main/java/com/handson/sentiment/controller/AppController.java	(date 1644441293605)
+@@ -0,0 +1,21 @@
++package com.handson.sentiment.controller;
++
++import com.handson.sentiment.nlp.SentimentAnalyzer;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RequestMethod;
++import org.springframework.web.bind.annotation.ResponseBody;
++import org.springframework.web.bind.annotation.RestController;
++import reactor.core.publisher.Mono;
++
++@RestController
++public class AppController {
++    @Autowired
++    SentimentAnalyzer sentimentAnalyzer;
++
++    @RequestMapping(path = "/hello", method = RequestMethod.GET)
++    public  @ResponseBody Mono<String> hello(String text)  {
++        Double score =  sentimentAnalyzer.analyze(text);
++        return Mono.just("Score is:" + score);
++    }
++}
